@@ -1,0 +1,18 @@
+{
+  "name": "earthquake-twitter-bot",
+  "version": "1.0.0",
+  "description": "地震・津波情報をXに自動投稿するボット",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "ws": "^8.18.0",
+    "twitter-api-v2": "^1.16.4"
+  },
+  "engines": {
+    "node": ">=18.x"
+  },
+  "author": "",
+  "license": "ISC"
+}
