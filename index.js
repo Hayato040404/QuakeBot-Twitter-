@@ -4,10 +4,10 @@ const { TwitterApi } = require('twitter-api-v2');
 
 // X API credentials (replace with your actual keys)
 const twitterClient = new TwitterApi({
-  appKey: 'YOUR_API_KEY',
-  appSecret: 'YOUR_API_SECRET',
-  accessToken: 'YOUR_ACCESS_TOKEN',
-  accessSecret: 'YOUR_ACCESS_TOKEN_SECRET',
+  appKey: 'zzRNUt75v8eM6FqI48V7mjzN2',
+  appSecret: 'RDmFApoBJd1jQH2mMnLwQmjJvcExLxBcGhBVG7ElSubC5SM1mN',
+  accessToken: '1821131988981706753-krbAweYEYMEwRnMYHoHQqwgIWLnMea',
+  accessSecret: 'A94cNkUHFJdz1lhvD2CD3KlS69dbPPWpojdtJOJqL6Ubs',
 });
 
 // WebSocket server endpoint
