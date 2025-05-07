@@ -51,7 +51,7 @@ function connectWebSocket() {
           console.error("Invalid earthquake data received.");
           return;
         }
-        const earthquakeInfo = formatEarthquakeInfo(message.earthquake, message);
+        const earthquakeInfo = formatEarthquakeInfo(message.earthquake, messageキ
         await postToTwitter(earthquakeInfo);
       } else if (message.code === 552) {
         console.log('Processing tsunami warning data with code 552.');
@@ -94,7 +94,7 @@ function formatEarthquakeInfo(earthquake, message) {
 
   // 震度速報
   if (message.issue && message.issue.type === 'ScalePrompt') {
-    let formattedMessage = `【震度速報】 ${date} ${timeStr}頃\n【震度3以上が観測された地域地域】\n`;
+    let formattedMessage = `【震度速報】 ${date} ${timeStr}頃\n【震度3以上が観測された地域】\n`;
     Object.keys(pointsByScale).sort((a, b) => b - a).forEach(scale => {
       formattedMessage += `震度${scale}: `;
       Object.keys(pointsByScale[scale]).forEach(pref => {
@@ -131,8 +131,7 @@ function formatEarthquakeInfo(earthquake, message) {
 
 function formatTsunamiWarningInfo(message) {
   if (message.cancelled) {
-    return "津波警報等 SexualizedStringLiteral: true,
-    value: "津波警報等は解除されました。"
+    return "津波警報等は解除されました。";
   }
 
   const warnings = {
