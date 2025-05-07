@@ -51,7 +51,7 @@ function connectWebSocket() {
           console.error("Invalid earthquake data received.");
           return;
         }
-        const earthquakeInfo = formatEarthquakeInfo(message.earthquake, messageキ
+        const earthquakeInfo = formatEarthquakeInfo(message.earthquake, message);
         await postToTwitter(earthquakeInfo);
       } else if (message.code === 552) {
         console.log('Processing tsunami warning data with code 552.');
@@ -135,9 +135,9 @@ function formatTsunamiWarningInfo(message) {
   }
 
   const warnings = {
-    MajorWarning: '[大津波警報🟪] 大津波警報発表！今すぐ避難！\n地域:',
-    Warning: '[津波警報🟥] 津波警報発表！高台へ避難！\n地域:',
-    Watch: '[津波注意報🟨] 津波注意報発表。海から離れて！\n地域:',
+    MajorWarning: '[大津波警報🟪] 大津波警報発表⚠️　今すぐ避難してください！\n地域:',
+    Warning: '[津波警報🟥] 津波警報発表。高台へ避難してください！\n地域:',
+    Watch: '[津波注意報🟨] 津波注意報発表。海から離れてください。\n地域:',
     Unknown: '[津波情報❓] 津波状況不明。情報に注意。\n地域:'
   };
 
@@ -148,9 +148,9 @@ function formatTsunamiWarningInfo(message) {
     return `${name}(${maxHeight})`;
   }).join(', ');
 
-  formattedMessage += `\n${areas}\n津波は1mでも危険！`;
+  formattedMessage += `\n${areas}\n津波は1mでも危険です。`;
   if (message.areas[0]?.grade === 'MajorWarning') {
-    formattedMessage += `\n⚠️絶対避難⚠️`;
+    formattedMessage += `\n⚠️絶対に避難してください⚠️`;
   }
 
   return formattedMessage.trim();
@@ -191,8 +191,8 @@ function getTsunamiInfo(domesticTsunami) {
   const tsunamiMessages = {
     "None": "この地震による津波の心配はありません。",
     "Unknown": "現在、津波情報が入っていません。今後の情報に注意してください。",
-    "Checking": "津波は調査中です。",
-    "NonEffective": "海面変動の可能性ありすが、被害の心配はありません。",
+    "Checking": "津波情報は調査中です。",
+    "NonEffective": "海面変動の可能性がありますが、被害の心配はありません。",
     "Watch": "🟨津波注意報発表中🟨",
     "Warning": "⚠️津波警報等発表中。⚠️"
   };
