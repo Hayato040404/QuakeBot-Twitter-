@@ -2,12 +2,12 @@ const http = require('http');
 const WebSocket = require('ws');
 const { TwitterApi } = require('twitter-api-v2');
 
-// X API credentials (replace with your actual keys)
+// X API credentials (using environment variables for Render)
 const twitterClient = new TwitterApi({
-  appKey: 'zzRNUt75v8eM6FqI48V7mjzN2',
-  appSecret: 'RDmFApoBJd1jQH2mMnLwQmjJvcExLxBcGhBVG7ElSubC5SM1mN',
-  accessToken: '1821131988981706753-krbAweYEYMEwRnMYHoHQqwgIWLnMea',
-  accessSecret: 'A94cNkUHFJdz1lhvD2CD3KlS69dbPPWpojdtJOJqL6Ubs',
+  appKey: process.env.TWITTER_API_KEY || 'zzRNUt75v8eM6FqI48V7mjzN2',
+  appSecret: process.env.TWITTER_API_SECRET || 'RDmFApoBJd1jQH2mMnLwQmjJvcExLxBcGhBVG7ElSubC5SM1mN',
+  accessToken: process.env.TWITTER_ACCESS_TOKEN || '1821131988981706753-krbAweYEYMEwRnMYHoHQqwgIWLnMea',
+  accessSecret: process.env.TWITTER_ACCESS_TOKEN_SECRET || 'A94cNkUHFJdz1lhvD2CD3KlS69dbPPWpojdtJOJqL6Ubs',
 });
 
 // WebSocket server endpoint
@@ -94,7 +94,7 @@ function formatEarthquakeInfo(earthquake, message) {
 
   // 震度速報
   if (message.issue && message.issue.type === 'ScalePrompt') {
-    let formattedMessage = `[震度速報] ${date} ${timeStr}頃\n震度3以上地域:\n`;
+    let formattedMessage = `【震度速報】 ${date} ${timeStr}頃\n【震度3以上が観測された地域地域】\n`;
     Object.keys(pointsByScale).sort((a, b) => b - a).forEach(scale => {
       formattedMessage += `震度${scale}: `;
       Object.keys(pointsByScale[scale]).forEach(pref => {
@@ -106,7 +106,7 @@ function formatEarthquakeInfo(earthquake, message) {
   }
 
   // 通常の地震情報
-  let formattedMessage = `${date} ${timeStr}\n震源:${hypocenter}\n最大震度:${maxScale}\nM${magnitude} 深さ:${depth}\n${tsunamiInfo}\n[各地の震度]`;
+  let formattedMessage = `【地震情報】${date} ${timeStr}頃、${hypocenter}を震源とする最大震度${maxScale}の地震がありました。Mは${magnitude} 、深さは${depth}を観測しています。\n${tsunamiInfo}\n[各地の震度]`;
   const scaleOrder = ['7', '6強', '6弱', '5強', '5弱', '4', '3', '2', '1'];
   const sortedScales = Object.keys(pointsByScale).sort((a, b) => scaleOrder.indexOf(a) - scaleOrder.indexOf(b));
 
@@ -131,7 +131,8 @@ function formatEarthquakeInfo(earthquake, message) {
 
 function formatTsunamiWarningInfo(message) {
   if (message.cancelled) {
-    return "津波警報等は解除されました。";
+    return "津波警報等 SexualizedStringLiteral: true,
+    value: "津波警報等は解除されました。"
   }
 
   const warnings = {
@@ -189,12 +190,12 @@ function getScaleDescription(scale) {
 
 function getTsunamiInfo(domesticTsunami) {
   const tsunamiMessages = {
-    "None": "津波の心配なし。",
-    "Unknown": "不明",
-    "Checking": "津波調査中。情報に注意。",
-    "NonEffective": "海面変動の可能性。被害の心配なし。",
-    "Watch": "津波注意報発表中。",
-    "Warning": "津波警報等発表中。"
+    "None": "この地震による津波の心配はありません。",
+    "Unknown": "現在、津波情報が入っていません。今後の情報に注意してください。",
+    "Checking": "津波は調査中です。",
+    "NonEffective": "海面変動の可能性ありすが、被害の心配はありません。",
+    "Watch": "🟨津波注意報発表中🟨",
+    "Warning": "⚠️津波警報等発表中。⚠️"
   };
   return tsunamiMessages[domesticTsunami] || "（津波情報なし）";
 }
@@ -207,10 +208,25 @@ async function postToTwitter(message) {
   }
 
   try {
-    await twitterClient.v1.tweet(tweet);
+    // Use v2 API to post tweet
+    await twitterClient.v2.tweet({ text: tweet });
     console.log('Tweet posted successfully:', tweet);
   } catch (error) {
-    console.error('Failed to post tweet:', error);
+    if (error.code === 429) {
+      // Handle rate limit error
+      const retryAfter = error.headers?.['retry-after'] || 60;
+      console.error(`Rate limit exceeded. Retrying after ${retryAfter} seconds.`);
+      await new Promise(resolve => setTimeout(resolve, retryAfter * 1000));
+      // Retry once
+      try {
+        await twitterClient.v2.tweet({ text: tweet });
+        console.log('Tweet posted successfully on retry:', tweet);
+      } catch (retryError) {
+        console.error('Failed to post tweet on retry:', retryError);
+      }
+    } else {
+      console.error('Failed to post tweet:', error);
+    }
   }
 }
 
