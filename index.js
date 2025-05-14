@@ -10,8 +10,9 @@ const twitterClient = new TwitterApi({
   accessSecret: process.env.TWITTER_ACCESS_TOKEN_SECRET || 'A94cNkUHFJdz1lhvD2CD3KlS69dbPPWpojdtJOJqL6Ubs',
 });
 
-// WebSocket server endpoint
-const wsUrl = 'wss://api.p2pquake.net/v2/ws';
+// WebSocket server endpoints
+const p2pQuakeWsUrl = 'wss://api.p2pquake.net/v2/ws'; // P2P Quake API
+const wolfxWsUrl = 'wss://ws-api.wolfx.jp/jma_eew'; // Wolfx EEW API
 
 // WebSocket reconnection interval (milliseconds)
 const reconnectInterval = 5000;
@@ -22,28 +23,29 @@ const PORT = process.env.PORT || 3000;
 // HTTP server to satisfy Render requirements
 const server = http.createServer((req, res) => {
   res.writeHead(200, { 'Content-Type': 'text/plain' });
-  res.end('WebSocket client is running.');
+  res.end('WebSocket clients are running.');
 });
 
 server.listen(PORT, () => {
   console.log(`HTTP server is running on port ${PORT}`);
 });
 
-// WebSocket client initialization
-let ws;
+// WebSocket clients initialization
+let p2pQuakeWs;
+let wolfxWs;
 
-function connectWebSocket() {
-  console.log('Connecting to WebSocket server...');
-  ws = new WebSocket(wsUrl);
+function connectP2PQuakeWebSocket() {
+  console.log('Connecting to P2P Quake WebSocket server...');
+  p2pQuakeWs = new WebSocket(p2pQuakeWsUrl);
 
-  ws.on('open', () => {
-    console.log('WebSocket connection established');
+  p2pQuakeWs.on('open', () => {
+    console.log('P2P Quake WebSocket connection established');
   });
 
-  ws.on('message', async (data) => {
+  p2pQuakeWs.on('message', async (data) => {
     try {
       const message = JSON.parse(data);
-      console.log("Received Data:", message);
+      console.log("P2P Quake Received Data:", message);
 
       if (message.code === 551) {
         console.log('Processing earthquake data with code 551.');
@@ -58,20 +60,68 @@ function connectWebSocket() {
         const tsunamiInfo = formatTsunamiWarningInfo(message);
         await postToTwitter(tsunamiInfo);
       } else {
-        console.log(`Ignored message with code: ${message.code}`);
+        console.log(`Ignored P2P Quake message with code: ${message.code}`);
       }
     } catch (error) {
-      console.error("Error processing message data:", error);
+      console.error("Error processing P2P Quake message data:", error);
     }
   });
 
-  ws.on('error', (error) => {
-    console.error('WebSocket error:', error);
+  p2pQuakeWs.on('error', (error) => {
+    console.error('P2P Quake WebSocket error:', error);
   });
 
-  ws.on('close', () => {
-    console.log('WebSocket connection closed. Reconnecting in 5 seconds...');
-    setTimeout(connectWebSocket, reconnectInterval);
+  p2pQuakeWs.on('close', () => {
+    console.log('P2P Quake WebSocket connection closed. Reconnecting in 5 seconds...');
+    setTimeout(connectP2PQuakeWebSocket, reconnectInterval);
+  });
+}
+
+function connectWolfxWebSocket() {
+  console.log('Connecting to Wolfx EEW WebSocket server...');
+  wolfxWs = new WebSocket(wolfxWsUrl);
+
+  wolfxWs.on('open', () => {
+    console.log('Wolfx EEW WebSocket connection established');
+  });
+
+  wolfxWs.on('message', async (data) => {
+    try {
+      const message = JSON.parse(data);
+      console.log("Wolfx EEW Received Data:", message);
+
+      if (message.Title && message.CodeType) {
+        // Post only for initial report (Serial: 1) or final report (isFinal: true)
+        if (message.Serial === 1 || message.isFinal) {
+          let formattedMessage;
+          if (message.isCancel) {
+            formattedMessage = "【緊急地震速報】先程の緊急地震速報は取り消されました。";
+          } else {
+            formattedMessage = formatEEWMessage(message);
+            if (message.isAssumption) {
+              formattedMessage += "\n※この緊急地震速報は精度が低い可能性があります※";
+            }
+            if (message.isFinal) {
+              formattedMessage += "\n【最終報】";
+            }
+          }
+          await postToTwitter(formattedMessage);
+        } else {
+          console.log(`Ignored EEW message with Serial: ${message.Serial}, isFinal: ${message.isFinal}`);
+        }
+      }
+    } catch (error) {
+      console.error("Error processing Wolfx EEW message data:", error);
+    }
+  });
+
+  wolfxWs.on('error', (error) => {
+    console.error('Wolfx EEW WebSocket error:', error);
+  });
+
+  wolfxWs.on('close', () => {
+    console.log('Wolfx EEW WebSocket connection closed. Reconnecting in 5 seconds...');
+    setTimeout(connectWolfxWebSocket, reconnectInterval);
   });
 }
 
@@ -135,7 +185,7 @@ function formatTsunamiWarningInfo(message) {
   }
 
   const warnings = {
-    MajorWarning: '[大津波警報🟪] 大津波警報発表⚠️　今すぐ避難してください！\n地域:',
+    MajorWarning: '[大津波警報🟪] 大津波警報発表⚠️ 今すぐ避難してください！\n地域:',
     Warning: '[津波警報🟥] 津波警報発表。高台へ避難してください！\n地域:',
     Watch: '[津波注意報🟨] 津波注意報発表。海から離れてください。\n地域:',
     Unknown: '[津波情報❓] 津波状況不明。情報に注意。\n地域:'
@@ -154,6 +204,11 @@ function formatTsunamiWarningInfo(message) {
   }
 
   return formattedMessage.trim();
+}
+
+function formatEEWMessage(data) {
+  const time = data.OriginTime.split(' ')[1] || '不明';
+  return `【緊急地震速報】推定最大震度${data.MaxIntensity}（第${data.Serial}報）\n${time}頃、${data.Hypocenter}を震源とする地震が発生。推定規模M${data.Magunitude}、深さ約${data.Depth}km程度。`;
 }
 
 function groupPointsByScale(points) {
@@ -229,4 +284,6 @@ async function postToTwitter(message) {
   }
 }
 
-connectWebSocket();
+// Start both WebSocket connections
+connectP2PQuakeWebSocket();
+connectWolfxWebSocket();
