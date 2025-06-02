@@ -95,7 +95,7 @@ function connectWolfxWebSocket() {
         if (message.Serial === 1 || message.isFinal) {
           let formattedMessage;
           if (message.isCancel) {
-            formattedMessage = "【緊急地震速報】先程の緊急地震速報は取り消されました。";
+            formattedMessage = "【緊急地震速報】先程の緊急地震速報はキャンセルされました。";
           } else {
             formattedMessage = formatEEWMessage(message);
             if (message.isAssumption) {
@@ -144,7 +144,7 @@ function formatEarthquakeInfo(earthquake, message) {
 
   // 震度速報
   if (message.issue && message.issue.type === 'ScalePrompt') {
-    let formattedMessage = `【震度速報】 ${date} ${timeStr}頃\n【震度3以上が観測された地域】\n`;
+    let formattedMessage = `【震度速報】 ${date} (${timeStr})\n`;
     Object.keys(pointsByScale).sort((a, b) => b - a).forEach(scale => {
       formattedMessage += `震度${scale}: `;
       Object.keys(pointsByScale[scale]).forEach(pref => {
@@ -156,7 +156,7 @@ function formatEarthquakeInfo(earthquake, message) {
   }
 
   // 通常の地震情報
-  let formattedMessage = `【地震情報】${date} ${timeStr}頃、${hypocenter}を震源とする最大震度${maxScale}の地震がありました。Mは${magnitude} 、深さは${depth}を観測しています。\n${tsunamiInfo}\n[各地の震度]`;
+  let formattedMessage = `【地震情報】${date} ${timeStr}\n${hypocenter}を震源とする震度${maxScale}の地震が発生。M:${magnitude} 、深さ:${depth}。\n${tsunamiInfo}\n[各地の震度]`;
   const scaleOrder = ['7', '6強', '6弱', '5強', '5弱', '4', '3', '2', '1'];
   const sortedScales = Object.keys(pointsByScale).sort((a, b) => scaleOrder.indexOf(a) - scaleOrder.indexOf(b));
 
@@ -168,7 +168,7 @@ function formatEarthquakeInfo(earthquake, message) {
         const cityMatch = addr.match(/([^市区町村]+[市区町村])/);
         if (cityMatch) uniqueCities.add(cityMatch[1]);
       });
-      formattedMessage += `${pref}(${Array.from(uniqueCities).join(', ')}) `;
+      formattedMessage += `${pref}(${Array.from(uniqueCities).join(',')}) `;
     });
   });
 
@@ -208,7 +208,7 @@ function formatTsunamiWarningInfo(message) {
 
 function formatEEWMessage(data) {
   const time = data.OriginTime.split(' ')[1] || '不明';
-  return `【緊急地震速報】推定最大震度${data.MaxIntensity}（第${data.Serial}報）\n${time}頃、${data.Hypocenter}を震源とする地震が発生。推定規模M${data.Magunitude}、深さ約${data.Depth}km程度。`;
+  return `【緊急地震速報】推定最大震度${data.MaxIntensity}（第${data.Serial}報）\n${time}頃${data.Hypocenter}を震源とする地震が発生。推定規模M${data.Magunitude}、深さ約${data.Depth}km程度。`;
 }
 
 function groupPointsByScale(points) {
@@ -244,10 +244,10 @@ function getScaleDescription(scale) {
 
 function getTsunamiInfo(domesticTsunami) {
   const tsunamiMessages = {
-    "None": "この地震による津波の心配はありません。",
+    "None": "津波の心配なし",
     "Unknown": "現在、津波情報が入っていません。今後の情報に注意してください。",
-    "Checking": "津波情報は調査中です。",
-    "NonEffective": "海面変動の可能性がありますが、被害の心配はありません。",
+    "Checking": "津波情報は調査中",
+    "NonEffective": "🟦海面変動のおそれあり🟦",
     "Watch": "🟨津波注意報発表中🟨",
     "Warning": "⚠️津波警報等発表中。⚠️"
   };
