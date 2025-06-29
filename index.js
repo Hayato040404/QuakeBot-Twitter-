@@ -44,7 +44,8 @@ async function initializeBrowser() {
   try {
     browser = await puppeteer.launch({
       headless: true,
-      args: ['--no-sandbox', '--disable-setuid-sandbox'], // Required for Render
+      args: ['--no-sandbox', '--disable-setuid-sandbox'],
+      executablePath: '/usr/bin/chromium-browser', // Explicitly set Chromium path
     });
     console.log('Puppeteer browser launched');
   } catch (error) {
@@ -169,7 +170,7 @@ function connectWolfxWebSocket() {
   });
 }
 
-function formatEarthquakeInfoThe (earthquake, message) {
+function formatEarthquakeInfo(earthquake, message) {
   const time = new Date(earthquake.time);
   const date = time.toLocaleDateString('ja-JP', { month: '2-digit', day: '2-digit' });
   const timeStr = time.toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' });
