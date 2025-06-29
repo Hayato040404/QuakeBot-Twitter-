@@ -1,13 +1,15 @@
+
 const http = require('http');
 const WebSocket = require('ws');
 const { TwitterApi } = require('twitter-api-v2');
+const puppeteer = require('puppeteer');
 
-// X API credentials (using environment variables for Render)
+// X API credentials (hardcoded)
 const twitterClient = new TwitterApi({
-  appKey: process.env.TWITTER_API_KEY || 'zzRNUt75v8eM6FqI48V7mjzN2',
-  appSecret: process.env.TWITTER_API_SECRET || 'RDmFApoBJd1jQH2mMnLwQmjJvcExLxBcGhBVG7ElSubC5SM1mN',
-  accessToken: process.env.TWITTER_ACCESS_TOKEN || '1821131988981706753-krbAweYEYMEwRnMYHoHQqwgIWLnMea',
-  accessSecret: process.env.TWITTER_ACCESS_TOKEN_SECRET || 'A94cNkUHFJdz1lhvD2CD3KlS69dbPPWpojdtJOJqL6Ubs',
+  appKey: 'zzRNUt75v8eM6FqI48V7mjzN2',
+  appSecret: 'RDmFApoBJd1jQH2mMnLwQmjJvcExLxBcGhBVG7ElSubC5SM1mN',
+  accessToken: '1821131988981706753-krbAweYEYMEwRnMYHoHQqwgIWLnMea',
+  accessSecret: 'A94cNkUHFJdz1lhvD2CD3KlS69dbPPWpojdtJOJqL6Ubs',
 });
 
 // WebSocket server endpoints
@@ -17,8 +19,8 @@ const wolfxWsUrl = 'wss://ws-api.wolfx.jp/jma_eew'; // Wolfx EEW API
 // WebSocket reconnection interval (milliseconds)
 const reconnectInterval = 5000;
 
-// Environment variable PORT for Render
-const PORT = process.env.PORT || 3000;
+// Port for HTTP server
+const PORT = 3000;
 
 // HTTP server to satisfy Render requirements
 const server = http.createServer((req, res) => {
@@ -33,6 +35,48 @@ server.listen(PORT, () => {
 // WebSocket clients initialization
 let p2pQuakeWs;
 let wolfxWs;
+
+// Puppeteer browser instance (shared to avoid launching multiple browsers)
+let browser;
+
+// Initialize Puppeteer browser
+async function initializeBrowser() {
+  try {
+    browser = await puppeteer.launch({
+      headless: true,
+      args: ['--no-sandbox', '--disable-setuid-sandbox'], // Required for Render
+    });
+    console.log('Puppeteer browser launched');
+  } catch (error) {
+    console.error('Failed to launch Puppeteer browser:', error);
+  }
+}
+
+// Close Puppeteer browser on process termination
+process.on('SIGINT', async () => {
+  if (browser) {
+    await browser.close();
+    console.log('Puppeteer browser closed');
+  }
+  process.exit();
+});
+
+// Function to take a screenshot
+async function takeScreenshot(url) {
+  let page;
+  try {
+    page = await browser.newPage();
+    await page.goto(url, { waitUntil: 'networkidle2' });
+    await new Promise(resolve => setTimeout(resolve, 150)); // Wait 0.15 seconds
+    const screenshot = await page.screenshot({ type: 'png' });
+    return screenshot;
+  } catch (error) {
+    console.error(`Failed to take screenshot of ${url}:`, error);
+    return null;
+  } finally {
+    if (page) await page.close();
+  }
+}
 
 function connectP2PQuakeWebSocket() {
   console.log('Connecting to P2P Quake WebSocket server...');
@@ -54,11 +98,11 @@ function connectP2PQuakeWebSocket() {
           return;
         }
         const earthquakeInfo = formatEarthquakeInfo(message.earthquake, message);
-        await postToTwitter(earthquakeInfo);
+        await postToTwitter(earthquakeInfo, 'https://quake-viewer.vercel.app/twitter');
       } else if (message.code === 552) {
         console.log('Processing tsunami warning data with code 552.');
         const tsunamiInfo = formatTsunamiWarningInfo(message);
-        await postToTwitter(tsunamiInfo);
+        await postToTwitter(tsunamiInfo, 'https://quake-viewer.vercel.app/twitter');
       } else {
         console.log(`Ignored P2P Quake message with code: ${message.code}`);
       }
@@ -105,7 +149,7 @@ function connectWolfxWebSocket() {
               formattedMessage += "\n【最終報】";
             }
           }
-          await postToTwitter(formattedMessage);
+          await postToTwitter(formattedMessage, 'https://quake-viewer.vercel.app/twitter-eew');
         } else {
           console.log(`Ignored EEW message with Serial: ${message.Serial}, isFinal: ${message.isFinal}`);
         }
@@ -125,7 +169,7 @@ function connectWolfxWebSocket() {
   });
 }
 
-function formatEarthquakeInfo(earthquake, message) {
+function formatEarthquakeInfoThe (earthquake, message) {
   const time = new Date(earthquake.time);
   const date = time.toLocaleDateString('ja-JP', { month: '2-digit', day: '2-digit' });
   const timeStr = time.toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' });
@@ -254,7 +298,7 @@ function getTsunamiInfo(domesticTsunami) {
   return tsunamiMessages[domesticTsunami] || "（津波情報なし）";
 }
 
-async function postToTwitter(message) {
+async function postToTwitter(message, screenshotUrl) {
   // Truncate to 139 characters and append "…" if needed
   let tweet = message;
   if (tweet.length > 139) {
@@ -262,8 +306,26 @@ async function postToTwitter(message) {
   }
 
   try {
-    // Use v2 API to post tweet
-    await twitterClient.v2.tweet({ text: tweet });
+    let mediaIds = [];
+    if (screenshotUrl) {
+      const screenshot = await takeScreenshot(screenshotUrl);
+      if (screenshot) {
+        // Upload media to Twitter
+        const media = await twitterClient.v1.uploadMedia(screenshot, {
+          mimeType: 'image/png',
+        });
+        mediaIds = [media];
+        console.log('Screenshot uploaded to Twitter');
+      } else {
+        console.error('Screenshot capture failed, posting tweet without media');
+      }
+    }
+
+    // Post tweet with optional media
+    await twitterClient.v2.tweet({
+      text: tweet,
+      media: mediaIds.length > 0 ? { media_ids: mediaIds } : undefined,
+    });
     console.log('Tweet posted successfully:', tweet);
   } catch (error) {
     if (error.code === 429) {
@@ -273,7 +335,21 @@ async function postToTwitter(message) {
       await new Promise(resolve => setTimeout(resolve, retryAfter * 1000));
       // Retry once
       try {
-        await twitterClient.v2.tweet({ text: tweet });
+        let mediaIds = [];
+        if (screenshotUrl) {
+          const screenshot = await takeScreenshot(screenshotUrl);
+          if (screenshot) {
+            const media = await twitterClient.v1.uploadMedia(screenshot, {
+              mimeType: 'image/png',
+            });
+            mediaIds = [media];
+            console.log('Screenshot uploaded to Twitter on retry');
+          }
+        }
+        await twitterClient.v2.tweet({
+          text: tweet,
+          media: mediaIds.length > 0 ? { media_ids: mediaIds } : undefined,
+        });
         console.log('Tweet posted successfully on retry:', tweet);
       } catch (retryError) {
         console.error('Failed to post tweet on retry:', retryError);
@@ -284,6 +360,9 @@ async function postToTwitter(message) {
   }
 }
 
-// Start both WebSocket connections
-connectP2PQuakeWebSocket();
-connectWolfxWebSocket();
+// Initialize Puppeteer and start WebSocket connections
+(async () => {
+  await initializeBrowser();
+  connectP2PQuakeWebSocket();
+  connectWolfxWebSocket();
+})();
