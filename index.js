@@ -2,19 +2,14 @@
 const http = require('http');
 const WebSocket = require('ws');
 const { TwitterApi } = require('twitter-api-v2');
-const screenshotApiCom = require('screenshot-api-com');
+const fetch = require('node-fetch');
 
-// X API credentials (hardcoded)
+// X API credentials (use environment variables for security)
 const twitterClient = new TwitterApi({
-  appKey: 'zzRNUt75v8eM6FqI48V7mjzN2',
-  appSecret: 'RDmFApoBJd1jQH2mMnLwQmjJvcExLxBcGhBVG7ElSubC5SM1mN',
-  accessToken: '1821131988981706753-krbAweYEYMEwRnMYHoHQqwgIWLnMea',
-  accessSecret: 'A94cNkUHFJdz1lhvD2CD3KlS69dbPPWpojdtJOJqL6Ubs',
-});
-
-// ScreenshotAPI.net client
-const screenshotClient = new screenshotApiCom.Client({
-  apiKey: 'KWT1HHV-SHYM0HK-KP8M8XR-5VJ94JD', // Replace with your ScreenshotAPI.net API key
+  appKey: process.env.TWITTER_API_KEY || 'zzRNUt75v8eM6FqI48V7mjzN2',
+  appSecret: process.env.TWITTER_API_SECRET || 'RDmFApoBJd1jQH2mMnLwQmjJvcExLxBcGhBVG7ElSubC5SM1mN',
+  accessToken: process.env.TWITTER_ACCESS_TOKEN || '1821131988981706753-krbAweYEYMEwRnMYHoHQqwgIWLnMea',
+  accessSecret: process.env.TWITTER_ACCESS_SECRET || 'A94cNkUHFJdz1lhvD2CD3KlS69dbPPWpojdtJOJqL6Ubs',
 });
 
 // WebSocket server endpoints
@@ -43,15 +38,17 @@ let wolfxWs;
 
 // Function to take a screenshot with ScreenshotAPI.net
 async function takeScreenshot(url) {
+  const token = process.env.SCREENSHOT_API_KEY || 'KWT1HHV-SHYM0HK-KP8M8XR-5VJ94JD'; // Replace with your ScreenshotAPI.net API key
+  const requestOptions = {
+    method: 'GET',
+    redirect: 'follow',
+  };
+
   try {
-    const screenshot = await screenshotClient.takeScreenshot(url, {
-      width: 800,
-      height: 600,
-      type: 'png',
-      delay: 200, // Wait 200ms for content to load
-      block_ads: true, // Block ads and pop-ups
-      full_page: true, // Capture full page
-    });
+    const apiUrl = `https://shot.screenshotapi.net/v3/screenshot?token=${token}&url=${encodeURIComponent(url)}&output=image&file_type=png&width=800&height=600&delay=200&block_ads=true&full_page=true`;
+    const response = await fetch(apiUrl, requestOptions);
+    if (!response.ok) throw new Error(`ScreenshotAPI.net error: ${response.status} ${response.statusText}`);
+    const screenshot = await response.buffer();
     console.log(`Screenshot captured for ${url}`);
     return screenshot;
   } catch (error) {
@@ -71,12 +68,12 @@ function connectP2PQuakeWebSocket() {
   p2pQuakeWs.on('message', async (data) => {
     try {
       const message = JSON.parse(data);
-      console.log("P2P Quake Received Data:", message);
+      console.log('P2P Quake Received Data:', message);
 
       if (message.code === 551) {
         console.log('Processing earthquake data with code 551.');
         if (!message.earthquake) {
-          console.error("Invalid earthquake data received.");
+          console.error('Invalid earthquake data received.');
           return;
         }
         const earthquakeInfo = formatEarthquakeInfo(message.earthquake, message);
@@ -89,7 +86,7 @@ function connectP2PQuakeWebSocket() {
         console.log(`Ignored P2P Quake message with code: ${message.code}`);
       }
     } catch (error) {
-      console.error("Error processing P2P Quake message data:", error);
+      console.error('Error processing P2P Quake message data:', error);
     }
   });
 
@@ -114,21 +111,21 @@ function connectWolfxWebSocket() {
   wolfxWs.on('message', async (data) => {
     try {
       const message = JSON.parse(data);
-      console.log("Wolfx EEW Received Data:", message);
+      console.log('Wolfx EEW Received Data:', message);
 
       if (message.Title && message.CodeType) {
         // Post only for initial report (Serial: 1) or final report (isFinal: true)
         if (message.Serial === 1 || message.isFinal) {
           let formattedMessage;
           if (message.isCancel) {
-            formattedMessage = "【緊急地震速報】先程の緊急地震速報はキャンセルされました。";
+            formattedMessage = '【緊急地震速報】先程の緊急地震速報はキャンセルされました。';
           } else {
             formattedMessage = formatEEWMessage(message);
             if (message.isAssumption) {
-              formattedMessage += "\n※この緊急地震速報は精度が低い可能性があります※";
+              formattedMessage += '\n※この緊急地震速報は精度が低い可能性があります※';
             }
             if (message.isFinal) {
-              formattedMessage += "\n【最終報】";
+              formattedMessage += '\n【最終報】';
             }
           }
           await postToTwitter(formattedMessage, 'https://quake-viewer.vercel.app/twitter-eew');
@@ -137,7 +134,7 @@ function connectWolfxWebSocket() {
         }
       }
     } catch (error) {
-      console.error("Error processing Wolfx EEW message data:", error);
+      console.error('Error processing Wolfx EEW message data:', error);
     }
   });
 
@@ -207,7 +204,7 @@ function formatEarthquakeInfo(earthquake, message) {
 
 function formatTsunamiWarningInfo(message) {
   if (message.cancelled) {
-    return "津波警報等は解除されました。";
+    return '津波警報等は解除されました。';
   }
 
   const warnings = {
@@ -270,14 +267,14 @@ function getScaleDescription(scale) {
 
 function getTsunamiInfo(domesticTsunami) {
   const tsunamiMessages = {
-    "None": "津波の心配なし",
-    "Unknown": "現在、津波情報が入っていません。今後の情報に注意してください。",
-    "Checking": "津波情報は調査中",
-    "NonEffective": "🟦海面変動のおそれあり🟦",
-    "Watch": "🟨津波注意報発表中🟨",
-    "Warning": "⚠️津波警報等発表中。⚠️"
+    'None': '津波の心配なし',
+    'Unknown': '現在、津波情報が入っていません。今後の情報に注意してください。',
+    'Checking': '津波情報は調査中',
+    'NonEffective': '🟦海面変動のおそれあり🟦',
+    'Watch': '🟨津波注意報発表中🟨',
+    'Warning': '⚠️津波警報等発表中。⚠️'
   };
-  return tsunamiMessages[domesticTsunami] || "（津波情報なし）";
+  return tsunamiMessages[domesticTsunami] || '（津波情報なし）';
 }
 
 async function postToTwitter(message, screenshotUrl) {
@@ -347,3 +344,4 @@ async function postToTwitter(message, screenshotUrl) {
 // Start WebSocket connections
 connectP2PQuakeWebSocket();
 connectWolfxWebSocket();
+```
