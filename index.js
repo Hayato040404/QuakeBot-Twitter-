@@ -39,17 +39,26 @@ let wolfxWs;
 // Puppeteer browser instance (shared to avoid launching multiple browsers)
 let browser;
 
-// Initialize Puppeteer browser
+// Initialize Puppeteer browser with minimal resources
 async function initializeBrowser() {
   try {
     browser = await puppeteer.launch({
-      headless: true,
-      args: ['--no-sandbox', '--disable-setuid-sandbox'],
-      executablePath: '/usr/bin/chromium-browser', // Explicitly set Chromium path
+      headless: 'new', // Use new headless mode for better performance
+      args: [
+        '--no-sandbox',
+        '--disable-setuid-sandbox',
+        '--disable-gpu',
+        '--disable-dev-shm-usage',
+        '--no-zygote', // Reduce memory usage
+        '--single-process', // Run in single process to save resources
+      ],
+      executablePath: '/usr/bin/chromium',
+      timeout: 15000, // Increase timeout to 15 seconds
     });
     console.log('Puppeteer browser launched');
   } catch (error) {
     console.error('Failed to launch Puppeteer browser:', error);
+    browser = null; // Set to null to fallback to text-only tweets
   }
 }
 
@@ -62,14 +71,19 @@ process.on('SIGINT', async () => {
   process.exit();
 });
 
-// Function to take a screenshot
+// Function to take a screenshot with optimized settings
 async function takeScreenshot(url) {
+  if (!browser) {
+    console.error('Browser not available, skipping screenshot');
+    return null;
+  }
   let page;
   try {
     page = await browser.newPage();
-    await page.goto(url, { waitUntil: 'networkidle2' });
+    await page.setViewport({ width: 1280, height: 720 }); // Reduced resolution
+    await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 10000 });
     await new Promise(resolve => setTimeout(resolve, 150)); // Wait 0.15 seconds
-    const screenshot = await page.screenshot({ type: 'png' });
+    const screenshot = await page.screenshot({ type: 'png', fullPage: false });
     return screenshot;
   } catch (error) {
     console.error(`Failed to take screenshot of ${url}:`, error);
@@ -308,7 +322,7 @@ async function postToTwitter(message, screenshotUrl) {
 
   try {
     let mediaIds = [];
-    if (screenshotUrl) {
+    if (screenshotUrl && browser) {
       const screenshot = await takeScreenshot(screenshotUrl);
       if (screenshot) {
         // Upload media to Twitter
@@ -320,6 +334,8 @@ async function postToTwitter(message, screenshotUrl) {
       } else {
         console.error('Screenshot capture failed, posting tweet without media');
       }
+    } else {
+      console.log('No browser instance or screenshot URL, posting text-only tweet');
     }
 
     // Post tweet with optional media
@@ -337,7 +353,7 @@ async function postToTwitter(message, screenshotUrl) {
       // Retry once
       try {
         let mediaIds = [];
-        if (screenshotUrl) {
+        if (screenshotUrl && browser) {
           const screenshot = await takeScreenshot(screenshotUrl);
           if (screenshot) {
             const media = await twitterClient.v1.uploadMedia(screenshot, {
