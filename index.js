@@ -2,7 +2,7 @@
 const http = require('http');
 const WebSocket = require('ws');
 const { TwitterApi } = require('twitter-api-v2');
-const puppeteer = require('puppeteer');
+const screenshotApiCom = require('screenshot-api-com');
 
 // X API credentials (hardcoded)
 const twitterClient = new TwitterApi({
@@ -10,6 +10,11 @@ const twitterClient = new TwitterApi({
   appSecret: 'RDmFApoBJd1jQH2mMnLwQmjJvcExLxBcGhBVG7ElSubC5SM1mN',
   accessToken: '1821131988981706753-krbAweYEYMEwRnMYHoHQqwgIWLnMea',
   accessSecret: 'A94cNkUHFJdz1lhvD2CD3KlS69dbPPWpojdtJOJqL6Ubs',
+});
+
+// ScreenshotAPI.net client
+const screenshotClient = new screenshotApiCom.Client({
+  apiKey: 'KWT1HHV-SHYM0HK-KP8M8XR-5VJ94JD', // Replace with your ScreenshotAPI.net API key
 });
 
 // WebSocket server endpoints
@@ -36,60 +41,22 @@ server.listen(PORT, () => {
 let p2pQuakeWs;
 let wolfxWs;
 
-// Puppeteer browser instance (shared to avoid launching multiple browsers)
-let browser;
-
-// Initialize Puppeteer browser with minimal resources
-async function initializeBrowser() {
-  try {
-    browser = await puppeteer.launch({
-      headless: 'new', // Use new headless mode for better performance
-      args: [
-        '--no-sandbox',
-        '--disable-setuid-sandbox',
-        '--disable-gpu',
-        '--disable-dev-shm-usage',
-        '--no-zygote', // Reduce memory usage
-        '--single-process', // Run in single process to save resources
-      ],
-      executablePath: '/usr/bin/chromium',
-      timeout: 15000, // Increase timeout to 15 seconds
-    });
-    console.log('Puppeteer browser launched');
-  } catch (error) {
-    console.error('Failed to launch Puppeteer browser:', error);
-    browser = null; // Set to null to fallback to text-only tweets
-  }
-}
-
-// Close Puppeteer browser on process termination
-process.on('SIGINT', async () => {
-  if (browser) {
-    await browser.close();
-    console.log('Puppeteer browser closed');
-  }
-  process.exit();
-});
-
-// Function to take a screenshot with optimized settings
+// Function to take a screenshot with ScreenshotAPI.net
 async function takeScreenshot(url) {
-  if (!browser) {
-    console.error('Browser not available, skipping screenshot');
-    return null;
-  }
-  let page;
   try {
-    page = await browser.newPage();
-    await page.setViewport({ width: 1280, height: 720 }); // Reduced resolution
-    await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 10000 });
-    await new Promise(resolve => setTimeout(resolve, 150)); // Wait 0.15 seconds
-    const screenshot = await page.screenshot({ type: 'png', fullPage: false });
+    const screenshot = await screenshotClient.takeScreenshot(url, {
+      width: 800,
+      height: 600,
+      type: 'png',
+      delay: 200, // Wait 200ms for content to load
+      block_ads: true, // Block ads and pop-ups
+      full_page: true, // Capture full page
+    });
+    console.log(`Screenshot captured for ${url}`);
     return screenshot;
   } catch (error) {
     console.error(`Failed to take screenshot of ${url}:`, error);
     return null;
-  } finally {
-    if (page) await page.close();
   }
 }
 
@@ -322,7 +289,7 @@ async function postToTwitter(message, screenshotUrl) {
 
   try {
     let mediaIds = [];
-    if (screenshotUrl && browser) {
+    if (screenshotUrl) {
       const screenshot = await takeScreenshot(screenshotUrl);
       if (screenshot) {
         // Upload media to Twitter
@@ -335,7 +302,7 @@ async function postToTwitter(message, screenshotUrl) {
         console.error('Screenshot capture failed, posting tweet without media');
       }
     } else {
-      console.log('No browser instance or screenshot URL, posting text-only tweet');
+      console.log('No screenshot URL, posting text-only tweet');
     }
 
     // Post tweet with optional media
@@ -353,7 +320,7 @@ async function postToTwitter(message, screenshotUrl) {
       // Retry once
       try {
         let mediaIds = [];
-        if (screenshotUrl && browser) {
+        if (screenshotUrl) {
           const screenshot = await takeScreenshot(screenshotUrl);
           if (screenshot) {
             const media = await twitterClient.v1.uploadMedia(screenshot, {
@@ -377,9 +344,6 @@ async function postToTwitter(message, screenshotUrl) {
   }
 }
 
-// Initialize Puppeteer and start WebSocket connections
-(async () => {
-  await initializeBrowser();
-  connectP2PQuakeWebSocket();
-  connectWolfxWebSocket();
-})();
+// Start WebSocket connections
+connectP2PQuakeWebSocket();
+connectWolfxWebSocket();
