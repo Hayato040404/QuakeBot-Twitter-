@@ -344,4 +344,3 @@ async function postToTwitter(message, screenshotUrl) {
 // Start WebSocket connections
 connectP2PQuakeWebSocket();
 connectWolfxWebSocket();
-```
