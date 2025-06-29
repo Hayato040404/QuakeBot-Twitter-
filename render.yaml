@@ -1,10 +1,9 @@
 services:
   - type: web
     name: earthquake-bot
-    env: node
+    env: docker
     plan: free # 必要に応じてプランを変更（例: starter, pro）
     region: oregon # 必要に応じてリージョンを変更
-    buildCommand: npm install
-    startCommand: node index.js
+    dockerfilePath: ./Dockerfile
     autoDeploy: true
     healthCheckPath: /
